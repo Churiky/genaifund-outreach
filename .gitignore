@@ -1,0 +1,51 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+build/
+develop-eggs/
+/dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node
+node_modules/
+ui/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# UI builds (commit ui/dist so python backend serves UI out of the box without node requirement)
+ui/build/
+!ui/dist/
+!ui/dist/**
+
+# SQLite (local dev fallback)
+*.db
+*.sqlite
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/

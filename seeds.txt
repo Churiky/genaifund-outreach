@@ -1,0 +1,3 @@
+# Default seed accounts (AI & robotics voices in Southeast Asia)
+# Replace with your own seed list. Do not DM strangers without consent.
+# Format: one username per line (without @)
