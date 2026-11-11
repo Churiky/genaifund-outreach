@@ -33,17 +33,20 @@ export default function Sent({ campaignId }: { campaignId: number }) {
     loadData();
   }, [campaignId]);
 
-  const handleSendApproved = async () => {
+  const handleSendApproved = async (simulate: boolean = false) => {
     setSending(true);
     setMsg("");
     try {
-      const results = await api.sendCampaign(campaignId);
+      const results = simulate
+        ? await api.simulateSend(campaignId)
+        : await api.sendCampaign(campaignId);
       await loadData();
       const sentCount = results.filter((r: any) => r.status === "sent").length;
       const blockedCount = results.filter((r: any) => r.status === "blocked").length;
       const failedCount = results.filter((r: any) => r.status === "failed").length;
 
-      let report = `Đã chạy gửi: ${sentCount} thành công`;
+      let report = simulate ? "⚡ [Demo Mode] " : "";
+      report += `Kết quả gửi: ${sentCount} thành công`;
       if (blockedCount > 0) report += `, ${blockedCount} bị chặn (an toàn chống trùng / giới hạn gửi)`;
       if (failedCount > 0) report += `, ${failedCount} lỗi`;
       setMsg(report);
@@ -63,6 +66,20 @@ export default function Sent({ campaignId }: { campaignId: number }) {
       setMsg(res.message || `Đã đồng bộ ${res.synced_count} phản hồi mới.`);
     } catch (err: any) {
       setMsg("Lỗi đồng bộ phản hồi: " + err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSimulateReplies = async () => {
+    setSyncing(true);
+    setMsg("");
+    try {
+      const res = await api.simulateReplies(campaignId);
+      await loadData();
+      setMsg(res.message || "Đã mô phỏng phản hồi từ ứng viên!");
+    } catch (err: any) {
+      setMsg("Lỗi mô phỏng: " + err.message);
     } finally {
       setSyncing(false);
     }
@@ -90,20 +107,35 @@ export default function Sent({ campaignId }: { campaignId: number }) {
               Kiểm soát quy tắc nền tảng X: cooldown, giới hạn ngày, không bao giờ gửi trùng một người.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleSendApproved(true)}
+              disabled={sending || approvedWaiting.length === 0}
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3.5 py-2 rounded-lg font-medium shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
+              title="Mô phỏng gửi an toàn dành cho tài khoản X Free Tier"
+            >
+              {sending ? "Đang gửi..." : `⚡ Gửi mô phỏng (${approvedWaiting.length})`}
+            </button>
+            <button
+              onClick={() => handleSendApproved(false)}
+              disabled={sending || approvedWaiting.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg font-medium shadow transition disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {sending ? "Đang gửi an toàn..." : `🚀 Gửi qua X API (${approvedWaiting.length})`}
+            </button>
             <button
               onClick={handleSyncReplies}
               disabled={syncing}
               className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-3.5 py-2 rounded-lg font-medium transition flex items-center gap-1.5"
             >
-              {syncing ? "Đang đồng bộ..." : "🔄 Kiểm tra tin nhắn phản hồi"}
+              {syncing ? "Đang kiểm tra..." : "🔄 Kiểm tra tin nhắn X"}
             </button>
             <button
-              onClick={handleSendApproved}
-              disabled={sending || approvedWaiting.length === 0}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg font-medium shadow transition disabled:opacity-50 flex items-center gap-1.5"
+              onClick={handleSimulateReplies}
+              disabled={syncing}
+              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs px-3.5 py-2 rounded-lg font-medium transition flex items-center gap-1.5"
             >
-              {sending ? "Đang gửi an toàn..." : `🚀 Gửi ${approvedWaiting.length} nháp đã duyệt`}
+              ⚡ Mô phỏng phản hồi (Demo)
             </button>
           </div>
         </div>
@@ -156,11 +188,17 @@ export default function Sent({ campaignId }: { campaignId: number }) {
               Các cuộc trò chuyện thực tế bắt đầu từ chiến dịch outreach của GenAI Fund.
             </p>
           </div>
+          <button
+            onClick={handleSimulateReplies}
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            + Tạo thêm phản hồi thử nghiệm
+          </button>
         </div>
 
         {replies.length === 0 ? (
           <div className="py-8 text-center text-gray-400 text-sm bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
-            Chưa có phản hồi mới. Bấm "Kiểm tra tin nhắn phản hồi" ở trên để đồng bộ tin nhắn đến từ X.
+            Chưa có phản hồi mới. Bấm <b>"⚡ Mô phỏng phản hồi (Demo)"</b> ở trên để xem cách hộp thư hoạt động!
           </div>
         ) : (
           <div className="space-y-3">
@@ -198,7 +236,7 @@ export default function Sent({ campaignId }: { campaignId: number }) {
                   href={`https://x.com/messages`}
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-2 rounded-lg font-medium transition self-start md:self-center"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-2 rounded-lg font-medium transition self-start md:self-center whitespace-nowrap"
                 >
                   Mở hộp thư X để trả lời →
                 </a>
@@ -219,7 +257,7 @@ export default function Sent({ campaignId }: { campaignId: number }) {
 
         {sentList.length === 0 ? (
           <div className="py-8 text-center text-gray-400 text-sm">
-            Chưa có tin nhắn nào được gửi trong chiến dịch này.
+            Chưa có tin nhắn nào được gửi trong chiến dịch này. Hãy duyệt nháp rồi bấm "Gửi mô phỏng" hoặc "Gửi qua X API".
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -1,6 +1,7 @@
 from datetime import datetime
 import logging
 import os
+import uuid
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("app.main")
@@ -26,13 +27,14 @@ from app.models import (
     DraftStatus,
     Evidence,
     Interaction,
+    MessageSent,
     MessageStatus,
     Prospect,
     ProspectStatus,
     SeedAccount,
     User,
 )
-from app.sender import send_approved_drafts
+from app.sender import has_already_sent, send_approved_drafts
 from app.tracker import (
     get_dashboard_stats,
     get_prospects_with_status,
@@ -54,6 +56,65 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Realistic Demonstration Dataset (AI & Robotics Southeast Asia Ecosystem)
+# Dùng cho chế độ thử nghiệm demo khi tài khoản X thuộc Free Tier
+# ---------------------------------------------------------------------------
+DEMO_CANDIDATES = [
+    {
+        "username": "alex_embodied",
+        "name": "Alex Nguyen",
+        "description": "Founding engineer @RoboticsVN. Building open-source foundation models for humanoid manipulation. Previously robotics researcher at NUS. Based in Hanoi & Singapore.",
+        "location": "Hanoi / Singapore",
+        "recent_posts": [
+            {"text": "Excited to share our open-source vision-language-action (VLA) benchmark for robot arms in Southeast Asia!"},
+            {"text": "Great to see the SEA embodied AI community gathering in Singapore next month."},
+            {"text": "Fine-tuning multi-modal models for tactile feedback on low-cost hardware."}
+        ]
+    },
+    {
+        "username": "priya_devtools",
+        "name": "Priya Sharma",
+        "description": "Founder @DevAI_SG. Building GPU cluster orchestration and inference devtools for generative AI startups across Southeast Asia. Ex-Google Cloud.",
+        "location": "Singapore",
+        "recent_posts": [
+            {"text": "Benchmark: running vLLM with speculative decoding on regional edge clusters drops TTFT by 45%."},
+            {"text": "Southeast Asian AI builders need infrastructure that abstracts GPU scarcity away."},
+            {"text": "Devtools are the highest leverage layer in generative AI right now."}
+        ]
+    },
+    {
+        "username": "budi_sea_ml",
+        "name": "Budi Santoso",
+        "description": "AI Researcher working on multi-modal LLMs and low-resource speech models at Bandung AI Lab. Contributor to open-source SEA AI benchmarks.",
+        "location": "Bandung, Indonesia",
+        "recent_posts": [
+            {"text": "New pre-print: efficient tokenization strategies for Indonesian and regional dialects."},
+            {"text": "Open-weights models running locally on robotics controllers will change edge automation in ASEAN."}
+        ]
+    },
+    {
+        "username": "charlotte_lim",
+        "name": "Charlotte Lim",
+        "description": "Co-founder & CTO at an autonomous robotics startup in Malaysia & Singapore. Developing AMR navigation and sensor fusion for automated logistics.",
+        "location": "Kuala Lumpur / Singapore",
+        "recent_posts": [
+            {"text": "Deployed our 50th autonomous mobile robot (AMR) in regional fulfillment centers."},
+            {"text": "Sensor fusion with solid-state LiDAR on ROS2: insights from 6 months of warehouse deployment."}
+        ]
+    },
+    {
+        "username": "thanh_vision_ai",
+        "name": "Thanh Tran",
+        "description": "Computer vision and embodied AI engineer. Building deep learning models for industrial defect inspection and robotic grasping in Vietnam.",
+        "location": "Ho Chi Minh City, Vietnam",
+        "recent_posts": [
+            {"text": "Real-time 6D pose estimation running at 60fps on Jetson Orin Nano for robotic picking."},
+            {"text": "Vietnam's AI engineering talent pool is accelerating incredibly fast."}
+        ]
+    }
+]
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +337,66 @@ async def find_prospects(campaign_id: int, db: Session = Depends(get_db)):
     return {"created": created, "errors": errors}
 
 
+@app.post("/campaigns/{campaign_id}/load-demo-data")
+def load_demo_data(campaign_id: int, db: Session = Depends(get_db)):
+    """Nạp dữ liệu mẫu ứng viên AI & Robotics Đông Nam Á chất lượng cao để chạy thử nghiệm đầy đủ."""
+    campaign = db.query(Campaign).get(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.evidence import summarize_evidence
+
+    # Ensure seed accounts exist
+    seeds = ["0xCodila", "karpathy", "le_robot_ai"]
+    for s in seeds:
+        exist = db.query(SeedAccount).filter(SeedAccount.campaign_id == campaign_id, SeedAccount.username == s).first()
+        if not exist:
+            db.add(SeedAccount(campaign_id=campaign_id, username=s, source="demo"))
+    db.commit()
+
+    created = 0
+    for c in DEMO_CANDIDATES:
+        username = c["username"]
+        exists = (
+            db.query(Prospect)
+            .filter(Prospect.campaign_id == campaign_id)
+            .filter(Prospect.username == username)
+            .first()
+        )
+        if exists:
+            continue
+
+        scored = score_prospect_logic(c["description"], c["recent_posts"])
+        prospect = Prospect(
+            campaign_id=campaign_id,
+            username=username,
+            display_name=c["name"],
+            bio=c["description"],
+            source_seed_username="0xCodila",
+            fit_score=scored["fit_score"],
+            fit_reason=scored["fit_reason"],
+            status=ProspectStatus.FOUND,
+        )
+        db.add(prospect)
+        db.flush()
+
+        evidence_summary = summarize_evidence(None, c["description"], c["recent_posts"])
+        evidence = Evidence(
+            prospect_id=prospect.id,
+            bio_text=c["description"],
+            recent_posts_json=str(c["recent_posts"]),
+            evidence_summary=evidence_summary,
+        )
+        db.add(evidence)
+        created += 1
+
+    db.commit()
+    return {
+        "created": created,
+        "message": f"Đã nạp thành công {created} ứng viên AI & Robotics Đông Nam Á kèm bằng chứng thực và điểm phù hợp."
+    }
+
+
 async def collect_evidence_for_prospect_fast(
     x_client: XClient, candidate: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -329,7 +450,6 @@ class DraftUpdate(BaseModel):
 
 @app.patch("/drafts/{draft_id}")
 def update_draft(draft_id: int, body: DraftUpdate, db: Session = Depends(get_db)):
-    """Cập nhật nội dung nháp hoặc trạng thái nháp."""
     draft = db.query(Draft).get(draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
@@ -391,7 +511,6 @@ def create_draft_for_prospect(prospect_id: int, db: Session = Depends(get_db)):
     evidence_summary = evidence.evidence_summary if evidence else ""
     result = draft_dm(evidence_summary, prospect.display_name or prospect.username)
 
-    # Check if a draft already exists for this prospect
     draft = db.query(Draft).filter(Draft.prospect_id == prospect.id).first()
     if draft:
         draft.dm_text = result["dm_text"]
@@ -413,7 +532,6 @@ def create_draft_for_prospect(prospect_id: int, db: Session = Depends(get_db)):
 
 @app.post("/campaigns/{campaign_id}/draft-all")
 def draft_all_for_campaign(campaign_id: int, db: Session = Depends(get_db)):
-    """Tạo nháp DM hàng loạt cho tất cả các ứng viên trong chiến dịch chưa có nháp."""
     prospects = (
         db.query(Prospect)
         .filter(Prospect.campaign_id == campaign_id)
@@ -485,6 +603,75 @@ async def send_campaign(campaign_id: int, db: Session = Depends(get_db)):
     return await send_approved_drafts(db, x_client, campaign_id)
 
 
+@app.post("/campaigns/{campaign_id}/simulate-send")
+def simulate_send_campaign(campaign_id: int, db: Session = Depends(get_db)):
+    """Mô phỏng gửi tin nhắn đã duyệt an toàn (dành cho chế độ Demo / X API Free tier)."""
+    campaign = db.query(Campaign).get(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    drafts = (
+        db.query(Draft)
+        .filter(Draft.campaign_id == campaign_id)
+        .filter(Draft.status == DraftStatus.APPROVED)
+        .order_by(Draft.created_at.asc())
+        .limit(campaign.max_sends_per_run)
+        .all()
+    )
+
+    results = []
+    for draft in drafts:
+        prospect = db.query(Prospect).get(draft.prospect_id)
+        if not prospect:
+            continue
+
+        if has_already_sent(db, prospect.id, prospect.username):
+            results.append({
+                "draft_id": draft.id,
+                "prospect_id": prospect.id,
+                "username": prospect.username,
+                "status": "blocked",
+                "reason": "already_sent_duplicate_prevention",
+            })
+            continue
+
+        mock_dm_id = f"mock_dm_{uuid.uuid4().hex[:10]}"
+        msg = MessageSent(
+            prospect_id=prospect.id,
+            campaign_id=campaign_id,
+            dm_text=draft.dm_text,
+            x_dm_id=mock_dm_id,
+            status=MessageStatus.SENT,
+        )
+        db.add(msg)
+
+        draft.status = DraftStatus.SENT
+        draft.sent_at = datetime.utcnow()
+        prospect.status = ProspectStatus.SENT
+
+        db.add(
+            Interaction(
+                prospect_id=prospect.id,
+                campaign_id=campaign_id,
+                type="sent",
+                direction="outbound",
+                content_snippet=draft.dm_text[:120],
+                needs_attention=False,
+            )
+        )
+        results.append({
+            "draft_id": draft.id,
+            "prospect_id": prospect.id,
+            "username": prospect.username,
+            "status": "sent",
+            "x_dm_id": mock_dm_id,
+            "note": "Demo simulated send (X Free tier mode)",
+        })
+
+    db.commit()
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Stats / tracking / replies
 # ---------------------------------------------------------------------------
@@ -505,6 +692,59 @@ async def sync_replies(campaign_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Campaign not found")
     x_client = XClient()
     return await sync_inbound_replies(db, x_client, campaign_id)
+
+
+@app.post("/campaigns/{campaign_id}/simulate-replies")
+def simulate_replies(campaign_id: int, db: Session = Depends(get_db)):
+    """Mô phỏng tin nhắn phản hồi thực tế từ các ứng viên đã gửi để kiểm thử Hộp thư phản hồi."""
+    campaign = db.query(Campaign).get(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    sent_prospects = (
+        db.query(Prospect)
+        .filter(Prospect.campaign_id == campaign_id)
+        .all()
+    )
+    if not sent_prospects:
+        return {"synced_count": 0, "message": "Chưa có ứng viên nào trong chiến dịch để mô phỏng phản hồi."}
+
+    sample_replies = [
+        "Hey! Thanks so much for reaching out. We are actually raising our seed round for our embodied AI pipeline in Singapore. Would love to hop on a quick call next Tuesday!",
+        "Hi there! Saw what GenAI Fund has been doing across SEA. We just open-sourced our robotics devtools benchmark. Happy to connect and share more details.",
+        "Thanks for the note! Always excited to connect with regional AI ecosystems. What stage does GenAI Fund typically look at?",
+    ]
+
+    synced = 0
+    for i, prospect in enumerate(sent_prospects[:3]):
+        text = sample_replies[i % len(sample_replies)]
+        existing = (
+            db.query(Interaction)
+            .filter(Interaction.prospect_id == prospect.id)
+            .filter(Interaction.type == "replied")
+            .first()
+        )
+        if existing:
+            continue
+
+        interaction = Interaction(
+            prospect_id=prospect.id,
+            campaign_id=campaign_id,
+            type="replied",
+            direction="inbound",
+            content_snippet=text,
+            needs_attention=True,
+            occurred_at=datetime.utcnow(),
+        )
+        db.add(interaction)
+        prospect.status = ProspectStatus.RESPONDED
+        synced += 1
+
+    db.commit()
+    return {
+        "synced_count": synced,
+        "message": f"Đã mô phỏng thành công {synced} phản hồi thực tế với nhãn 'Cần trả lời'."
+    }
 
 
 # ---------------------------------------------------------------------------

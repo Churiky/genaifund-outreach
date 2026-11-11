@@ -40,6 +40,8 @@ export const api = {
     }),
   findProspects: (campaignId: number) =>
     request(`/campaigns/${campaignId}/find`, { method: "POST" }),
+  loadDemoData: (campaignId: number) =>
+    request(`/campaigns/${campaignId}/load-demo-data`, { method: "POST" }),
   listProspects: (campaignId: number) =>
     request(`/campaigns/${campaignId}/prospects`),
   createDraft: (prospectId: number) =>
@@ -61,8 +63,12 @@ export const api = {
     request(`/drafts/${draftId}/reject`, { method: "PATCH" }),
   sendCampaign: (campaignId: number) =>
     request(`/campaigns/${campaignId}/send`, { method: "POST" }),
+  simulateSend: (campaignId: number) =>
+    request(`/campaigns/${campaignId}/simulate-send`, { method: "POST" }),
   syncReplies: (campaignId: number) =>
     request(`/campaigns/${campaignId}/sync-replies`, { method: "POST" }),
+  simulateReplies: (campaignId: number) =>
+    request(`/campaigns/${campaignId}/simulate-replies`, { method: "POST" }),
   stats: (campaignId: number) => request(`/campaigns/${campaignId}/stats`),
   replies: (campaignId: number) => request(`/campaigns/${campaignId}/replies`),
 };

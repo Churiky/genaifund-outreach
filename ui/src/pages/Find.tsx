@@ -62,7 +62,6 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
     setLoading(true);
     setMsg("");
     try {
-      // Ensure seeds are saved
       for (const s of seeds) {
         await api.addSeed(campaignId, s).catch(() => {});
       }
@@ -74,12 +73,26 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
       } else {
         const errorDetail = res.errors?.length ? ` (${res.errors.join("; ")})` : "";
         setMsg(
-          `Không tìm thấy ứng viên mới từ X API${errorDetail}. ` +
-          `Vui lòng kiểm tra quyền token X hoặc thử thêm seeds khác.`
+          `X API (Free Tier) không có quyền đọc mạng lưới followers của người khác${errorDetail}. ` +
+          `Bạn có thể bấm nút "⚡ Tải ứng viên mẫu (Demo Data)" bên dưới để tiếp tục trải nghiệm toàn bộ luồng!`
         );
       }
     } catch (err: any) {
       setMsg("Lỗi tìm kiếm: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadDemoData = async () => {
+    setLoading(true);
+    setMsg("");
+    try {
+      const res = await api.loadDemoData(campaignId);
+      refreshProspects();
+      setMsg(res.message || "Đã nạp 5 ứng viên AI & Robotics Đông Nam Á mẫu!");
+    } catch (err: any) {
+      setMsg("Lỗi nạp dữ liệu mẫu: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -155,7 +168,7 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
           ))}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={saveSeeds}
             disabled={loading || seeds.length === 0}
@@ -168,7 +181,15 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
             disabled={loading || seeds.length === 0}
             className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-5 py-2 rounded-lg font-medium shadow-sm transition disabled:opacity-50 flex items-center gap-2"
           >
-            {loading ? "Đang quét mạng lưới..." : "🔍 Quét tìm ứng viên từ Seeds"}
+            {loading ? "Đang quét mạng lưới..." : "🔍 Quét tìm ứng viên từ Seeds (X API)"}
+          </button>
+          <button
+            type="button"
+            onClick={handleLoadDemoData}
+            disabled={loading}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded-lg font-medium shadow-sm transition flex items-center gap-1.5"
+          >
+            ⚡ Tải ứng viên mẫu (Demo Data SEA)
           </button>
         </div>
 
@@ -213,7 +234,7 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
 
         {prospects.length === 0 ? (
           <div className="py-12 text-center text-gray-400 text-sm">
-            Chưa có ứng viên trong chiến dịch. Nhấn "Quét tìm ứng viên từ Seeds" ở trên để bắt đầu.
+            Chưa có ứng viên trong chiến dịch. Nhấn <b>"⚡ Tải ứng viên mẫu (Demo Data SEA)"</b> để nạp dữ liệu mẫu nhanh, hoặc nhấn <b>"Quét tìm ứng viên từ Seeds"</b>.
           </div>
         ) : (
           <div className="overflow-x-auto">

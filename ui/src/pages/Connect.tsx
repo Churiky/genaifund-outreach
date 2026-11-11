@@ -15,7 +15,6 @@ export default function Connect({ onConnected }: { onConnected: (id: number) => 
   const [campaign, setCampaign] = useState<any>(null);
 
   useEffect(() => {
-    // If token exists, check credentials status
     const token = localStorage.getItem("token");
     if (token) {
       setStep("setup");
@@ -47,12 +46,10 @@ export default function Connect({ onConnected }: { onConnected: (id: number) => 
     setLoading(true);
     setMsg("");
     try {
-      // 1. Send provided credentials to runtime configuration
       if (creds.x_bearer_token || creds.x_user_access_token || creds.anthropic_api_key) {
         await api.updateCredentials(creds);
       }
 
-      // 2. Create outreach campaign
       const res = await api.createCampaign({
         name: campaignName.trim() || "AI & Robotics SEA Outreach",
         segment_description: "AI/robotics builders, founders, researchers in Southeast Asia",
@@ -65,9 +62,42 @@ export default function Connect({ onConnected }: { onConnected: (id: number) => 
       setMsg("Đã kết nối và tạo chiến dịch thành công.");
       setTimeout(() => {
         onConnected(res.id);
-      }, 600);
+      }, 500);
     } catch (err: any) {
       setMsg("Lỗi thiết lập: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickDemo = async () => {
+    setLoading(true);
+    setMsg("Đang khởi tạo môi trường Demo thử nghiệm...");
+    try {
+      // 1. Login automatically if needed
+      if (!localStorage.getItem("token")) {
+        const loginRes = await api.login("admin", "admin");
+        localStorage.setItem("token", loginRes.access_token);
+      }
+
+      // 2. Create campaign
+      const campRes = await api.createCampaign({
+        name: "Demo: AI & Robotics Southeast Asia",
+        segment_description: "Thử nghiệm quét, soạn nháp Claude và theo dõi phản hồi",
+        max_sends_per_run: 25,
+        max_sends_per_day: 100,
+        cooldown_seconds: 5,
+      });
+
+      // 3. Load demo dataset
+      await api.loadDemoData(campRes.id);
+
+      setMsg("✓ Đã nạp thành công 5 ứng viên AI & Robotics Đông Nam Á!");
+      setTimeout(() => {
+        onConnected(campRes.id);
+      }, 600);
+    } catch (err: any) {
+      setMsg("Lỗi khởi tạo demo: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -79,9 +109,31 @@ export default function Connect({ onConnected }: { onConnected: (id: number) => 
         <span className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
         <h2 className="text-xl font-bold">Kết nối & Cấu hình Tài khoản Outreach</h2>
       </div>
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-gray-600 mb-5">
         Dành riêng cho GenAI Fund. Kết nối tài khoản X của bạn để gửi DM tiếp cận cá nhân hóa không trùng lặp.
       </p>
+
+      {/* Quick Demo Mode Banner */}
+      <div className="mb-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold text-indigo-900 flex items-center gap-1.5">
+              <span>⚡</span> Chế độ Trình chiếu Demo (X API Free)
+            </div>
+            <div className="text-xs text-indigo-700 mt-0.5">
+              Tải sẵn ứng viên AI & Robotics Đông Nam Á để demo toàn bộ tính năng mà không cần tài khoản X trả phí.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleQuickDemo}
+            disabled={loading}
+            className="whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-2 rounded-lg font-bold shadow-sm transition"
+          >
+            Vào Demo Ngay
+          </button>
+        </div>
+      </div>
 
       {step === "login" ? (
         <>
