@@ -660,9 +660,9 @@ def simulate_send_campaign(campaign_id: int, db: Session = Depends(get_db)):
                 "draft_id": draft.id,
                 "prospect_id": prospect.id,
                 "username": prospect.username,
-                "status": "sent",
+                "status": "blocked",
                 "reason": "already_sent_duplicate_prevention",
-                "note": "Prospect previously received a DM; marked as sent and skipped duplicate sending.",
+                "note": "Prospect previously received a DM; skipped to prevent duplicate sending.",
             })
             continue
 
