@@ -253,9 +253,17 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
                 {prospects.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50/80 transition">
                     <td className="py-3 pr-4">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                        {(p.display_name || p.username || "U")[0].toUpperCase()}
-                      </div>
+                      {p.profile_image_url ? (
+                        <img
+                          src={p.profile_image_url}
+                          alt=""
+                          className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                          {(p.display_name || p.username || "U")[0].toUpperCase()}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 pr-4">
                       <div className="font-semibold text-gray-900">{p.display_name || p.username}</div>
@@ -270,7 +278,9 @@ export default function Find({ campaignId, onNavigateToDrafts }: FindProps) {
                     </td>
                     <td className="py-3 pr-4 max-w-[220px]">
                       <div className="text-xs text-gray-700 line-clamp-2">{p.bio || "—"}</div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">Từ seed: @{p.source_seed_username}</div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        {p.location ? `📍 ${p.location} · ` : ""}Từ seed: @{p.source_seed_username}
+                      </div>
                     </td>
                     <td className="py-3 pr-4">
                       <span

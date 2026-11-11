@@ -77,8 +77,11 @@ class Prospect(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"))
+    x_user_id = Column(String, nullable=True, index=True)
     username = Column(String, nullable=False, index=True)
     display_name = Column(String, nullable=True)
+    profile_image_url = Column(String, nullable=True)
+    location = Column(String, nullable=True)
     bio = Column(Text, nullable=True)
     source_seed_username = Column(String, nullable=True)
     fit_score = Column(Integer, default=0)

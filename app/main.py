@@ -63,8 +63,10 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 DEMO_CANDIDATES = [
     {
+        "id": "1802938475610",
         "username": "alex_embodied",
         "name": "Alex Nguyen",
+        "profile_image_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
         "description": "Founding engineer @RoboticsVN. Building open-source foundation models for humanoid manipulation. Previously robotics researcher at NUS. Based in Hanoi & Singapore.",
         "location": "Hanoi / Singapore",
         "recent_posts": [
@@ -74,8 +76,10 @@ DEMO_CANDIDATES = [
         ]
     },
     {
+        "id": "1803847562019",
         "username": "priya_devtools",
         "name": "Priya Sharma",
+        "profile_image_url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
         "description": "Founder @DevAI_SG. Building GPU cluster orchestration and inference devtools for generative AI startups across Southeast Asia. Ex-Google Cloud.",
         "location": "Singapore",
         "recent_posts": [
@@ -85,8 +89,10 @@ DEMO_CANDIDATES = [
         ]
     },
     {
+        "id": "1804958673021",
         "username": "budi_sea_ml",
         "name": "Budi Santoso",
+        "profile_image_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
         "description": "AI Researcher working on multi-modal LLMs and low-resource speech models at Bandung AI Lab. Contributor to open-source SEA AI benchmarks.",
         "location": "Bandung, Indonesia",
         "recent_posts": [
@@ -95,8 +101,10 @@ DEMO_CANDIDATES = [
         ]
     },
     {
+        "id": "1805162738495",
         "username": "charlotte_lim",
         "name": "Charlotte Lim",
+        "profile_image_url": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80",
         "description": "Co-founder & CTO at an autonomous robotics startup in Malaysia & Singapore. Developing AMR navigation and sensor fusion for automated logistics.",
         "location": "Kuala Lumpur / Singapore",
         "recent_posts": [
@@ -105,8 +113,10 @@ DEMO_CANDIDATES = [
         ]
     },
     {
+        "id": "1806273849501",
         "username": "thanh_vision_ai",
         "name": "Thanh Tran",
+        "profile_image_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
         "description": "Computer vision and embodied AI engineer. Building deep learning models for industrial defect inspection and robotic grasping in Vietnam.",
         "location": "Ho Chi Minh City, Vietnam",
         "recent_posts": [
@@ -296,16 +306,21 @@ async def find_prospects(campaign_id: int, db: Session = Depends(get_db)):
                     continue
 
                 # Evidence + scoring
+                location_val = c.get("location")
                 evidence_result = await collect_evidence_for_prospect_fast(x_client, c)
                 scored = score_prospect_logic(
                     evidence_result.get("bio", "") or "",
                     evidence_result.get("recent_posts", []),
+                    location=location_val,
                 )
 
                 prospect = Prospect(
                     campaign_id=campaign_id,
+                    x_user_id=str(c.get("id") or ""),
                     username=username,
                     display_name=c.get("name"),
+                    profile_image_url=c.get("profile_image_url"),
+                    location=location_val,
                     bio=evidence_result.get("bio"),
                     source_seed_username=seed.username,
                     fit_score=scored["fit_score"],
@@ -366,11 +381,14 @@ def load_demo_data(campaign_id: int, db: Session = Depends(get_db)):
         if exists:
             continue
 
-        scored = score_prospect_logic(c["description"], c["recent_posts"])
+        scored = score_prospect_logic(c["description"], c["recent_posts"], location=c.get("location"))
         prospect = Prospect(
             campaign_id=campaign_id,
+            x_user_id=c.get("id") or f"demo_user_{username}",
             username=username,
             display_name=c["name"],
+            profile_image_url=c.get("profile_image_url"),
+            location=c.get("location"),
             bio=c["description"],
             source_seed_username="0xCodila",
             fit_score=scored["fit_score"],
@@ -425,10 +443,14 @@ async def collect_evidence_for_prospect_fast(
     }
 
 
-def score_prospect_logic(bio: str, recent_posts: List[Dict[str, Any]]) -> Dict[str, Any]:
+def score_prospect_logic(
+    bio: str,
+    recent_posts: List[Dict[str, Any]],
+    location: Optional[str] = None,
+) -> Dict[str, Any]:
     from app.scorer import score_prospect
 
-    return score_prospect(bio, recent_posts)
+    return score_prospect(bio, recent_posts, location=location)
 
 
 # ---------------------------------------------------------------------------

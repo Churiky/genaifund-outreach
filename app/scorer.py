@@ -1,7 +1,8 @@
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 AI_ROBOTICS_KEYWORDS = [
+    # AI & models
     "ai",
     "artificial intelligence",
     "machine learning",
@@ -9,58 +10,114 @@ AI_ROBOTICS_KEYWORDS = [
     "deep learning",
     "llm",
     "generative ai",
+    "genai",
+    "foundation model",
+    "foundation models",
+    "multi-modal",
+    "multimodal",
+    "agent",
+    "agents",
+    "computer vision",
+    # Robotics & Embodied AI
     "robotics",
     "robot",
+    "robots",
     "embodied ai",
+    "humanoid",
+    "amr",
+    "ros",
+    "ros2",
     "automation",
-    "founder",
-    "builder",
-    "researcher",
-    "engineer",
+    "manipulation",
+    "vla",
+    # Infra & Devtools
     "infra",
     "infrastructure",
     "developer tools",
     "devtools",
+    "gpu",
+    "inference",
+    # Roles
+    "founder",
+    "co-founder",
+    "builder",
+    "researcher",
+    "engineer",
+    "cto",
     "startup",
+    # Southeast Asia countries & tech hubs
     "southeast asia",
+    "sea",
     "singapore",
     "indonesia",
+    "jakarta",
+    "bandung",
     "vietnam",
+    "hanoi",
+    "ho chi minh",
+    "hcmc",
+    "saigon",
     "thailand",
+    "bangkok",
     "malaysia",
+    "kuala lumpur",
     "philippines",
-    "sea",
+    "manila",
 ]
+
+AI_SUBSET = {
+    "ai", "artificial intelligence", "machine learning", "ml", "deep learning",
+    "llm", "generative ai", "genai", "foundation model", "foundation models",
+    "multi-modal", "multimodal", "agent", "agents", "computer vision",
+    "robotics", "robot", "robots", "embodied ai", "humanoid", "amr", "ros",
+    "ros2", "automation", "manipulation", "vla", "infra", "infrastructure",
+    "developer tools", "devtools", "gpu", "inference"
+}
+
+ROLE_SUBSET = {
+    "founder", "co-founder", "builder", "researcher", "engineer", "cto", "startup"
+}
+
+SEA_SUBSET = {
+    "southeast asia", "sea", "singapore", "indonesia", "jakarta", "bandung",
+    "vietnam", "hanoi", "ho chi minh", "hcmc", "saigon", "thailand",
+    "bangkok", "malaysia", "kuala lumpur", "philippines", "manila"
+}
 
 
 def score_prospect(
-    bio: str, recent_posts: List[Dict[str, Any]]
+    bio: str,
+    recent_posts: List[Dict[str, Any]],
+    location: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Điểm phù hợp theo quy tắc dựa trên bio và bài viết gần đây. Không là guess."""
+    """Điểm phù hợp theo quy tắc dựa trên bio, bài viết gần đây và địa điểm."""
     text_parts: List[str] = []
     if bio:
         text_parts.append(bio)
+    if location:
+        text_parts.append(f"Location: {location}")
     for p in recent_posts:
-        if p.get("text"):
+        if isinstance(p, dict) and p.get("text"):
             text_parts.append(p["text"])
     combined = " ".join(text_parts).lower()
 
     matches: List[str] = []
     for kw in AI_ROBOTICS_KEYWORDS:
-        if re.search(r"\b" + re.escape(kw.lower()) + r"\b", combined):
+        pattern = r"\b" + re.escape(kw.lower()) + r"\b"
+        if re.search(pattern, combined):
             matches.append(kw)
 
-    # Tiered scoring: keyword presence + SEA indicator + founder/builder role
+    # Tiered scoring
     score = 0
     reasons: List[str] = []
-    ai_matches = [m for m in matches if m in ("ai", "artificial intelligence", "machine learning", "ml", "deep learning", "llm", "generative ai", "robotics", "robot", "embodied ai", "automation")]
-    role_matches = [m for m in matches if m in ("founder", "builder", "researcher", "engineer", "startup")]
-    sea_matches = [m for m in matches if m in ("southeast asia", "singapore", "indonesia", "vietnam", "thailand", "malaysia", "philippines", "sea")]
+    ai_matches = [m for m in matches if m in AI_SUBSET]
+    role_matches = [m for m in matches if m in ROLE_SUBSET]
+    sea_matches = [m for m in matches if m in SEA_SUBSET]
 
-    score += min(len(ai_matches) * 10, 40)
-    score += min(len(role_matches) * 8, 24)
-    score += min(len(sea_matches) * 6, 18)
-    score += min(len(matches) * 2, 18)
+    score += min(len(ai_matches) * 12, 45)
+    score += min(len(role_matches) * 10, 25)
+    score += min(len(sea_matches) * 10, 25)
+    score += min(len(matches) * 2, 10)
     score = min(score, 100)
 
     if ai_matches:

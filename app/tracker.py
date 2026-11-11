@@ -76,9 +76,12 @@ def get_prospects_with_status(db: Session, campaign_id: int) -> List[Dict[str, A
         rows.append(
             {
                 "id": p.id,
+                "x_user_id": p.x_user_id,
                 "draft_id": draft.id if draft else None,
                 "username": p.username,
                 "display_name": p.display_name,
+                "profile_image_url": p.profile_image_url,
+                "location": p.location,
                 "bio": p.bio,
                 "source_seed_username": p.source_seed_username,
                 "fit_score": p.fit_score,
@@ -115,6 +118,7 @@ def get_unanswered_replies(db: Session, campaign_id: int) -> List[Dict[str, Any]
                 "prospect_id": r.prospect_id,
                 "username": prospect.username if prospect else "unknown",
                 "display_name": prospect.display_name if prospect else "",
+                "profile_image_url": prospect.profile_image_url if prospect else None,
                 "content_snippet": r.content_snippet,
                 "occurred_at": r.occurred_at.strftime("%Y-%m-%d %H:%M:%S") if r.occurred_at else "",
                 "needs_attention": r.needs_attention,
@@ -126,7 +130,7 @@ def get_unanswered_replies(db: Session, campaign_id: int) -> List[Dict[str, Any]
 async def sync_inbound_replies(
     db: Session, x_client: XClient, campaign_id: int
 ) -> Dict[str, Any]:
-    """Đồng bộ tin nhắn đến từ X API v2 và gắn cờ needs_attention."""
+    """Đồng bộ tin nhắn đến từ X API v2 và gắn cờ needs_attention chính xác cho người phản hồi."""
     if not x_client.user_access_token:
         return {
             "synced_count": 0,
@@ -147,8 +151,8 @@ async def sync_inbound_replies(
                 continue
 
             text = event.get("text") or ""
-            created_at_str = event.get("created_at")
-            event_id = event.get("id")
+            if not text:
+                continue
 
             # Check if this interaction was already logged
             existing = (
@@ -160,12 +164,34 @@ async def sync_inbound_replies(
             if existing:
                 continue
 
-            # Find matching prospect in this campaign
-            prospect = (
-                db.query(Prospect)
-                .filter(Prospect.campaign_id == campaign_id)
-                .first()
-            )
+            # 1. Match prospect by x_user_id
+            prospect = None
+            if sender_id:
+                prospect = (
+                    db.query(Prospect)
+                    .filter(Prospect.campaign_id == campaign_id)
+                    .filter(Prospect.x_user_id == sender_id)
+                    .first()
+                )
+
+            # 2. If not found by ID, lookup username via X API
+            if not prospect and sender_id:
+                try:
+                    user_data = await x_client.lookup_user_by_id(sender_id)
+                    s_username = user_data.get("username")
+                    if s_username:
+                        prospect = (
+                            db.query(Prospect)
+                            .filter(Prospect.campaign_id == campaign_id)
+                            .filter(Prospect.username.ilike(s_username))
+                            .first()
+                        )
+                        if prospect:
+                            prospect.x_user_id = sender_id
+                            db.add(prospect)
+                except Exception as exc:
+                    logger.warning("Could not resolve sender @%s: %s", sender_id, exc)
+
             if not prospect:
                 continue
 
@@ -187,12 +213,12 @@ async def sync_inbound_replies(
         db.commit()
         return {
             "synced_count": synced_count,
-            "message": f"Successfully synced {synced_count} inbound replies.",
+            "message": f"Đã đồng bộ {synced_count} phản hồi mới từ X API.",
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("Error syncing inbound replies: %s", exc)
         return {
             "synced_count": 0,
             "error": str(exc),
-            "message": f"Failed to sync replies: {exc}",
+            "message": f"Lỗi đồng bộ phản hồi: {exc}",
         }

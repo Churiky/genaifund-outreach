@@ -63,12 +63,27 @@ class XClient:
         return resp.json()
 
     async def me(self) -> Dict[str, Any]:
-        data = await self._get("/users/me", user_token=True)
+        data = await self._get(
+            "/users/me",
+            params={"user.fields": "username,name,description,profile_image_url,public_metrics,location"},
+            user_token=True,
+        )
         return data.get("data", {})
 
     async def lookup_user_by_username(self, username: str) -> Dict[str, Any]:
+        clean_user = username.strip().lstrip("@")
         data = await self._get(
-            f"/users/by/username/{username}", user_token=True
+            f"/users/by/username/{clean_user}",
+            params={"user.fields": "username,name,description,profile_image_url,public_metrics,location"},
+            user_token=True,
+        )
+        return data.get("data", {})
+
+    async def lookup_user_by_id(self, user_id: str) -> Dict[str, Any]:
+        data = await self._get(
+            f"/users/{user_id}",
+            params={"user.fields": "username,name,description,profile_image_url,public_metrics,location"},
+            user_token=True,
         )
         return data.get("data", {})
 

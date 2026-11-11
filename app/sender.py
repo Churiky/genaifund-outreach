@@ -135,8 +135,14 @@ async def send_approved_drafts(
             if not user or not user.get("id"):
                 raise ValueError(f"Could not resolve X user id for @{prospect.username}")
 
+            prospect.x_user_id = str(user.get("id"))
+            if user.get("profile_image_url"):
+                prospect.profile_image_url = user.get("profile_image_url")
+            if user.get("location"):
+                prospect.location = user.get("location")
+
             sent_res = await x_client.send_dm(user["id"], draft.dm_text)
-            dm_id = sent_res.get("id") or sent_res.get("dm_conversation_id")
+            dm_id = sent_res.get("dm_event_id") or sent_res.get("id") or sent_res.get("dm_conversation_id")
 
             msg = MessageSent(
                 prospect_id=prospect.id,

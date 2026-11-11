@@ -230,13 +230,21 @@ export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                    {(p.display_name || p.username || "U")[0].toUpperCase()}
-                  </div>
+                  {p.profile_image_url ? (
+                    <img
+                      src={p.profile_image_url}
+                      alt=""
+                      className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                      {(p.display_name || p.username || "U")[0].toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <div className="font-semibold text-gray-900">{p.display_name || p.username}</div>
                     <div className="text-xs text-gray-500">
-                      @{p.username} · Điểm phù hợp:{" "}
+                      @{p.username} {p.location ? `· 📍 ${p.location} ` : ""}· Điểm phù hợp:{" "}
                       <span className="font-bold text-indigo-700">{p.fit_score}/100</span>
                     </div>
                   </div>
