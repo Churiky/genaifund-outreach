@@ -32,6 +32,7 @@ class DraftStatus(str, enum.Enum):
     APPROVED = "approved"
     SENT = "sent"
     FAILED = "failed"
+    REJECTED = "rejected"
 
 
 class MessageStatus(str, enum.Enum):

@@ -489,12 +489,14 @@ def update_draft(draft_id: int, body: DraftUpdate, db: Session = Depends(get_db)
             if prospect:
                 prospect.status = ProspectStatus.APPROVED
                 db.add(prospect)
-        elif new_status in ("rejected", "failed", DraftStatus.FAILED):
-            draft.status = DraftStatus.FAILED
+        elif new_status in ("rejected", DraftStatus.REJECTED):
+            draft.status = DraftStatus.REJECTED
             prospect = db.query(Prospect).get(draft.prospect_id)
             if prospect:
                 prospect.status = ProspectStatus.REJECTED
                 db.add(prospect)
+        elif new_status in ("failed", DraftStatus.FAILED):
+            draft.status = DraftStatus.FAILED
         elif new_status in ("draft", DraftStatus.DRAFT):
             draft.status = DraftStatus.DRAFT
 
@@ -602,7 +604,7 @@ def reject_draft(draft_id: int, db: Session = Depends(get_db)):
     draft = db.query(Draft).get(draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
-    draft.status = DraftStatus.FAILED
+    draft.status = DraftStatus.REJECTED
     prospect = db.query(Prospect).get(draft.prospect_id)
     if prospect:
         prospect.status = ProspectStatus.REJECTED
@@ -648,12 +650,19 @@ def simulate_send_campaign(campaign_id: int, db: Session = Depends(get_db)):
             continue
 
         if has_already_sent(db, prospect.id, prospect.username):
+            draft.status = DraftStatus.SENT
+            if not draft.sent_at:
+                draft.sent_at = datetime.utcnow()
+            prospect.status = ProspectStatus.SENT
+            db.add(draft)
+            db.add(prospect)
             results.append({
                 "draft_id": draft.id,
                 "prospect_id": prospect.id,
                 "username": prospect.username,
-                "status": "blocked",
+                "status": "sent",
                 "reason": "already_sent_duplicate_prevention",
+                "note": "Prospect previously received a DM; marked as sent and skipped duplicate sending.",
             })
             continue
 

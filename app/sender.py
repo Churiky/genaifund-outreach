@@ -95,16 +95,21 @@ async def send_approved_drafts(
 
         # Dedup: never send twice to the same prospect or username
         if has_already_sent(db, prospect.id, prospect.username):
-            draft.status = DraftStatus.FAILED
+            draft.status = DraftStatus.SENT
+            if not draft.sent_at:
+                draft.sent_at = datetime.utcnow()
+            prospect.status = ProspectStatus.SENT
             db.add(draft)
+            db.add(prospect)
             db.commit()
             results.append(
                 {
                     "draft_id": draft.id,
                     "prospect_id": prospect.id,
                     "username": prospect.username,
-                    "status": "blocked",
+                    "status": "sent",
                     "reason": "already_sent_duplicate_prevention",
+                    "note": "Prospect previously received a DM; marked as sent and skipped duplicate sending.",
                 }
             )
             continue

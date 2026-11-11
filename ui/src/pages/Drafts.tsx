@@ -8,7 +8,7 @@ interface DraftsProps {
 
 export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
   const [prospects, setProspects] = useState<any[]>([]);
-  const [filter, setFilter] = useState<"pending" | "approved" | "all">("pending");
+  const [filter, setFilter] = useState<"pending" | "approved" | "sent" | "all">("pending");
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [msg, setMsg] = useState("");
@@ -99,18 +99,21 @@ export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
     }
   };
 
-  const handleSendApproved = async () => {
+  const handleSend = async (simulate: boolean = false) => {
     setSending(true);
     setMsg("");
     try {
-      const results = await api.sendCampaign(campaignId);
+      const results = simulate
+        ? await api.simulateSend(campaignId)
+        : await api.sendCampaign(campaignId);
       refresh();
       const sentCount = results.filter((r: any) => r.status === "sent").length;
       const blockedCount = results.filter((r: any) => r.status === "blocked").length;
       const failedCount = results.filter((r: any) => r.status === "failed").length;
 
-      let summary = `Kết quả gửi: ${sentCount} đã gửi thành công`;
-      if (blockedCount > 0) summary += `, ${blockedCount} bị chặn (tránh trùng / quá giới hạn ngày)`;
+      let summary = simulate ? "⚡ [Mô phỏng Demo] " : "🚀 [Gửi qua X API] ";
+      summary += `Kết quả: ${sentCount} đã gửi thành công`;
+      if (blockedCount > 0) summary += `, ${blockedCount} bị chặn (an toàn chống trùng / giới hạn ngày)`;
       if (failedCount > 0) summary += `, ${failedCount} thất bại`;
       setMsg(summary);
 
@@ -128,11 +131,14 @@ export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
     if (!p.draft_id) return false;
     if (filter === "pending") return p.draft_status === "draft";
     if (filter === "approved") return p.draft_status === "approved";
-    return true;
+    if (filter === "sent") return p.draft_status === "sent";
+    return true; // "all" shows everything
   });
 
   const approvedCount = prospects.filter((p) => p.draft_status === "approved").length;
   const pendingCount = prospects.filter((p) => p.draft_status === "draft").length;
+  const sentCount = prospects.filter((p) => p.draft_status === "sent").length;
+  const totalDraftsCount = prospects.filter((p) => p.draft_id).length;
 
   return (
     <div className="space-y-6">
@@ -147,35 +153,46 @@ export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
               Mỗi tin nhắn đều dựa trên bằng chứng thực tế từ hồ sơ/bài viết của ứng viên. Không bịa đặt sự quen biết.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {pendingCount > 0 && (
               <button
                 onClick={handleApproveAll}
-                disabled={loading}
+                disabled={loading || sending}
                 className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-3.5 py-2 rounded-lg font-medium transition"
               >
                 ✓ Duyệt tất cả ({pendingCount})
               </button>
             )}
             {approvedCount > 0 && (
-              <button
-                onClick={handleSendApproved}
-                disabled={sending}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg font-medium shadow transition flex items-center gap-1.5"
-              >
-                {sending ? "Đang gửi an toàn..." : `🚀 Gửi ${approvedCount} tin nhắn đã duyệt`}
-              </button>
+              <>
+                <button
+                  onClick={() => handleSend(true)}
+                  disabled={sending}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3.5 py-2 rounded-lg font-medium shadow-sm transition flex items-center gap-1.5"
+                  title="Mô phỏng gửi an toàn dành cho Demo / X Free Tier"
+                >
+                  {sending ? "Đang gửi..." : `⚡ Gửi mô phỏng (${approvedCount})`}
+                </button>
+                <button
+                  onClick={() => handleSend(false)}
+                  disabled={sending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-lg font-medium shadow transition flex items-center gap-1.5"
+                  title="Gửi trực tiếp qua X API chính thức (cần gói X Basic/Pro)"
+                >
+                  {sending ? "Đang gửi an toàn..." : `🚀 Gửi qua X API (${approvedCount})`}
+                </button>
+              </>
             )}
           </div>
         </div>
 
         {/* Filter pills */}
-        <div className="flex gap-2 mt-5 border-t border-gray-100 pt-4">
+        <div className="flex flex-wrap gap-2 mt-5 border-t border-gray-100 pt-4">
           <button
             onClick={() => setFilter("pending")}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               filter === "pending"
-                ? "bg-indigo-600 text-white"
+                ? "bg-indigo-600 text-white shadow-sm"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
@@ -185,21 +202,31 @@ export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
             onClick={() => setFilter("approved")}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               filter === "approved"
-                ? "bg-indigo-600 text-white"
+                ? "bg-indigo-600 text-white shadow-sm"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
             Đã duyệt sẵn sàng gửi ({approvedCount})
           </button>
           <button
-            onClick={() => setFilter("all")}
+            onClick={() => setFilter("sent")}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-              filter === "all"
-                ? "bg-indigo-600 text-white"
+              filter === "sent"
+                ? "bg-indigo-600 text-white shadow-sm"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            Tất cả nháp ({prospects.filter((p) => p.draft_id).length})
+            Đã gửi ({sentCount})
+          </button>
+          <button
+            onClick={() => setFilter("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+              filter === "all"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Tất cả nháp ({totalDraftsCount})
           </button>
         </div>
 
@@ -214,138 +241,167 @@ export default function Drafts({ campaignId, onNavigateToSent }: DraftsProps) {
       <div className="space-y-4">
         {displayedProspects.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-400 text-sm">
-            Không có nháp nào trong mục này. Hãy chuyển sang trang "Tìm ứng viên" và nhấn "Soạn DM".
+            Không có nháp nào trong mục này.
           </div>
         ) : (
-          displayedProspects.map((p) => (
-            <div
-              key={p.id}
-              className={`bg-white rounded-xl shadow-sm border p-5 transition ${
-                p.draft_status === "approved"
-                  ? "border-emerald-200 bg-emerald-50/20"
-                  : p.draft_status === "failed"
-                  ? "border-red-200 opacity-60"
-                  : "border-gray-200"
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  {p.profile_image_url ? (
-                    <img
-                      src={p.profile_image_url}
-                      alt=""
-                      className="w-10 h-10 rounded-full object-cover border border-gray-200"
+          displayedProspects.map((p) => {
+            const isSent = p.draft_status === "sent";
+            const isApproved = p.draft_status === "approved";
+            const isRejected = p.draft_status === "rejected";
+            const isFailed = p.draft_status === "failed";
+            const isDraft = p.draft_status === "draft";
+
+            return (
+              <div
+                key={p.id}
+                className={`bg-white rounded-xl shadow-sm border p-5 transition ${
+                  isSent
+                    ? "border-blue-200 bg-blue-50/15"
+                    : isApproved
+                    ? "border-emerald-200 bg-emerald-50/20"
+                    : isRejected
+                    ? "border-orange-200 bg-orange-50/10 opacity-75"
+                    : isFailed
+                    ? "border-red-200 bg-red-50/20"
+                    : "border-gray-200"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    {p.profile_image_url ? (
+                      <img
+                        src={p.profile_image_url}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                        {(p.display_name || p.username || "U")[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-semibold text-gray-900">{p.display_name || p.username}</div>
+                      <div className="text-xs text-gray-500">
+                        @{p.username} {p.location ? `· 📍 ${p.location} ` : ""}· Điểm phù hợp:{" "}
+                        <span className="font-bold text-indigo-700">{p.fit_score}/100</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wide border ${
+                      isSent
+                        ? "bg-blue-100 text-blue-800 border-blue-200"
+                        : isApproved
+                        ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                        : isRejected
+                        ? "bg-orange-100 text-orange-800 border-orange-200"
+                        : isFailed
+                        ? "bg-red-100 text-red-800 border-red-200"
+                        : "bg-amber-100 text-amber-800 border-amber-200"
+                    }`}
+                  >
+                    {isSent
+                      ? "ĐÃ GỬI"
+                      : isApproved
+                      ? "ĐÃ PHÊ DUYỆT"
+                      : isRejected
+                      ? "ĐÃ TỪ CHỐI"
+                      : isFailed
+                      ? "GỬI THẤT BẠI"
+                      : "CHỜ DUYỆT"}
+                  </span>
+                </div>
+
+                {/* Sent error banner if any */}
+                {isFailed && p.sent_error && (
+                  <div className="mb-3 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                    <span className="font-semibold">Chi tiết lỗi gửi: </span>
+                    {p.sent_error}
+                  </div>
+                )}
+
+                {/* Editable or Static DM Text */}
+                {editingDraftId === p.draft_id ? (
+                  <div className="mb-3 space-y-2">
+                    <label className="block text-xs font-semibold text-gray-700">Chỉnh sửa nội dung DM:</label>
+                    <textarea
+                      className="w-full border border-indigo-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500"
+                      rows={3}
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
                     />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                      {(p.display_name || p.username || "U")[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <div className="font-semibold text-gray-900">{p.display_name || p.username}</div>
-                    <div className="text-xs text-gray-500">
-                      @{p.username} {p.location ? `· 📍 ${p.location} ` : ""}· Điểm phù hợp:{" "}
-                      <span className="font-bold text-indigo-700">{p.fit_score}/100</span>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setEditingDraftId(null)}
+                        className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        onClick={() => handleEditSave(p.draft_id)}
+                        disabled={loading}
+                        className="text-xs px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                      >
+                        Lưu nội dung
+                      </button>
                     </div>
                   </div>
-                </div>
-                <span
-                  className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wide ${
-                    p.draft_status === "approved"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : p.draft_status === "sent"
-                      ? "bg-blue-100 text-blue-800"
-                      : p.draft_status === "failed"
-                      ? "bg-red-100 text-red-800"
-                      : "bg-amber-100 text-amber-800"
-                  }`}
-                >
-                  {p.draft_status === "approved"
-                    ? "ĐÃ PHÊ DUYỆT"
-                    : p.draft_status === "sent"
-                    ? "ĐÃ GỬI"
-                    : p.draft_status === "failed"
-                    ? "TỪ CHỐI / THẤT BẠI"
-                    : "CHỜ DUYỆT"}
-                </span>
-              </div>
+                ) : (
+                  <div className="mb-3 p-3.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 leading-relaxed font-sans">
+                    "{p.draft_text || "(Chưa có văn bản)"}"
+                  </div>
+                )}
 
-              {/* Editable or Static DM Text */}
-              {editingDraftId === p.draft_id ? (
-                <div className="mb-3 space-y-2">
-                  <label className="block text-xs font-semibold text-gray-700">Chỉnh sửa nội dung DM:</label>
-                  <textarea
-                    className="w-full border border-indigo-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                    rows={3}
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                  />
-                  <div className="flex gap-2 justify-end">
+                {/* Evidence used */}
+                <div className="mb-4 text-xs text-gray-500 bg-white border border-dashed border-gray-200 rounded p-2.5">
+                  <span className="font-semibold text-gray-600">Bằng chứng thực sử dụng: </span>
+                  {p.evidence_used || p.bio || "Không có bằng chứng công khai"}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                  {isDraft && (
                     <button
-                      onClick={() => setEditingDraftId(null)}
-                      className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100"
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      onClick={() => handleEditSave(p.draft_id)}
+                      onClick={() => handleApprove(p.draft_id)}
                       disabled={loading}
-                      className="text-xs px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-1.5 rounded-lg font-medium transition"
                     >
-                      Lưu nội dung
+                      ✓ Phê duyệt
                     </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-3 p-3.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 leading-relaxed font-sans">
-                  "{p.draft_text || "(Chưa có văn bản)"}"
-                </div>
-              )}
-
-              {/* Evidence used */}
-              <div className="mb-4 text-xs text-gray-500 bg-white border border-dashed border-gray-200 rounded p-2.5">
-                <span className="font-semibold text-gray-600">Bằng chứng thực sử dụng: </span>
-                {p.evidence_used || p.bio || "Không có bằng chứng công khai"}
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                {p.draft_status !== "approved" && (
+                  )}
+                  {isDraft && editingDraftId !== p.draft_id && (
+                    <button
+                      onClick={() => handleEditStart(p)}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-medium transition"
+                    >
+                      ✎ Chỉnh sửa
+                    </button>
+                  )}
+                  {(isDraft || isApproved) && (
+                    <button
+                      onClick={() => handleReject(p.draft_id)}
+                      disabled={loading}
+                      className="bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-medium transition"
+                    >
+                      ✕ Từ chối
+                    </button>
+                  )}
+                  {isSent && (
+                    <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                      ✓ Đã gửi tới @{p.username}
+                    </span>
+                  )}
                   <button
-                    onClick={() => handleApprove(p.draft_id)}
+                    onClick={() => handleRegenerate(p.id)}
                     disabled={loading}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-1.5 rounded-lg font-medium transition"
+                    className="ml-auto text-xs text-indigo-600 hover:underline"
                   >
-                    ✓ Phê duyệt
+                    ↻ Soạn lại bằng Claude AI
                   </button>
-                )}
-                {editingDraftId !== p.draft_id && (
-                  <button
-                    onClick={() => handleEditStart(p)}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-medium transition"
-                  >
-                    ✎ Chỉnh sửa
-                  </button>
-                )}
-                {p.draft_status !== "failed" && (
-                  <button
-                    onClick={() => handleReject(p.draft_id)}
-                    disabled={loading}
-                    className="bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-medium transition"
-                  >
-                    ✕ Từ chối
-                  </button>
-                )}
-                <button
-                  onClick={() => handleRegenerate(p.id)}
-                  disabled={loading}
-                  className="ml-auto text-xs text-indigo-600 hover:underline"
-                >
-                  ↻ Soạn lại bằng Claude AI
-                </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
