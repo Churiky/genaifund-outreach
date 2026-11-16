@@ -4,6 +4,30 @@ Một công cụ hoàn chỉnh, chạy được thực tế để GenAI Fund tì
 
 ---
 
+## 🚀 Triển khai lên Render (1-Click Cloud Deployment)
+
+Để team GenAI Fund có thể truy cập và test trực tiếp qua link web mà không cần cài đặt bất kỳ thứ gì trên máy cá nhân:
+
+### Cách 1: Sử dụng Render Blueprint (`render.yaml` tự động)
+1. Đẩy mã nguồn dự án lên GitHub cá nhân của bạn (xem lệnh bên dưới).
+2. Đăng nhập [dashboard.render.com](https://dashboard.render.com) (tài khoản Free).
+3. Nhấn **New +** -> Chọn **Blueprint**.
+4. Chọn repository GitHub vừa tạo và bấm **Connect**.
+5. Render sẽ tự động đọc file `render.yaml`, khởi tạo:
+   - **Web Service** (Python FastAPI + giao diện React đã build sẵn).
+   - **Database** (PostgreSQL Free).
+6. Sau khoảng 2 phút, Render sẽ cấp cho bạn một đường link công khai (ví dụ: `https://genaifund-outreach.onrender.com`). Team GenAI Fund chỉ cần mở link là sử dụng được ngay!
+
+### Cách 2: Tạo thủ công Web Service trên Render (Dưới 3 phút)
+- **New +** -> **Web Service** -> Chọn Repo GitHub của bạn.
+- **Environment**: `Python 3`
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Plan**: `Free`
+- Bấm **Create Web Service**.
+
+---
+
 ## 📦 Bộ tài liệu & Sản phẩm nộp bài (Deliverables)
 1. **Working Prototype (Mã nguồn & Hệ thống chạy được)**:
    - Backend: FastAPI (Python 3.10+) + SQLAlchemy + SQLite / PostgreSQL
