@@ -2,10 +2,16 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import settings
 
+db_url = settings.database_url
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
 engine = create_engine(
-    settings.database_url,
+    db_url,
     connect_args={"check_same_thread": False}
-    if settings.database_url.startswith("sqlite")
+    if db_url.startswith("sqlite")
     else {},
 )
 
