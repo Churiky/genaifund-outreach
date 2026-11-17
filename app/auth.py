@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-import jwt
+try:
+    import jwt
+except ImportError:
+    from jose import jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 

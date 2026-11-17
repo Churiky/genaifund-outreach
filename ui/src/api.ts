@@ -1,9 +1,19 @@
 const BASE = import.meta.env.VITE_API_BASE || "";
 
+function getSessionId(): string {
+  let sid = localStorage.getItem("genai_session_id");
+  if (!sid) {
+    sid = "sess_" + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    localStorage.setItem("genai_session_id", sid);
+  }
+  return sid;
+}
+
 async function request(path: string, opts?: RequestInit) {
   const token = localStorage.getItem("token");
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    "X-Session-ID": getSessionId(),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });

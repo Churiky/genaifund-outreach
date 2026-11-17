@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("app.main")
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -158,6 +158,20 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 
+# In-memory session-isolated credentials cache
+# Format: { session_id: { "x_bearer_token": "...", "x_user_access_token": "...", "anthropic_api_key": "..." } }
+SESSION_CREDENTIALS: Dict[str, Dict[str, str]] = {}
+
+
+def get_session_id(x_session_id: Optional[str] = Header(None, alias="X-Session-ID")) -> str:
+    """Trích xuất session_id của từng trình duyệt/người dùng để cách ly cache & credentials hoàn toàn."""
+    return x_session_id or "default"
+
+
+def get_session_creds(session_id: str) -> Dict[str, str]:
+    return SESSION_CREDENTIALS.get(session_id, {})
+
+
 class CredentialsUpdate(BaseModel):
     x_bearer_token: Optional[str] = None
     x_user_access_token: Optional[str] = None
@@ -165,29 +179,41 @@ class CredentialsUpdate(BaseModel):
 
 
 @app.post("/config/credentials")
-def update_credentials(body: CredentialsUpdate):
-    """Cập nhật credentials trong phiên chạy để không cần can thiệp file .env."""
-    if body.x_bearer_token and body.x_bearer_token.strip():
-        settings.x_bearer_token = body.x_bearer_token.strip()
-    if body.x_user_access_token and body.x_user_access_token.strip():
-        settings.x_user_access_token = body.x_user_access_token.strip()
-    if body.anthropic_api_key and body.anthropic_api_key.strip():
-        settings.anthropic_api_key = body.anthropic_api_key.strip()
+def update_credentials(
+    body: CredentialsUpdate,
+    session_id: str = Depends(get_session_id),
+):
+    """Cập nhật credentials được CÁCH LY THEO TỪNG SESSION riêng biệt, không bị rò rỉ cho người khác."""
+    creds = SESSION_CREDENTIALS.setdefault(session_id, {})
+    if body.x_bearer_token is not None and body.x_bearer_token.strip():
+        creds["x_bearer_token"] = body.x_bearer_token.strip()
+    if body.x_user_access_token is not None and body.x_user_access_token.strip():
+        creds["x_user_access_token"] = body.x_user_access_token.strip()
+    if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
+        creds["anthropic_api_key"] = body.anthropic_api_key.strip()
+
     return {
         "status": "ok",
-        "message": "Credentials updated successfully for current runtime.",
-        "x_bearer_token_set": bool(settings.x_bearer_token),
-        "x_user_access_token_set": bool(settings.x_user_access_token),
-        "anthropic_api_key_set": bool(settings.anthropic_api_key),
+        "message": "Credentials updated securely for your personal session.",
+        "x_bearer_token_set": bool(creds.get("x_bearer_token")),
+        "x_user_access_token_set": bool(creds.get("x_user_access_token")),
+        "anthropic_api_key_set": bool(creds.get("anthropic_api_key")),
     }
 
 
 @app.get("/config/credentials/status")
-def get_credentials_status():
+def get_credentials_status(session_id: str = Depends(get_session_id)):
+    """Kiểm tra trạng thái credentials chỉ của riêng session hiện tại."""
+    creds = get_session_creds(session_id)
+    # Check session credentials first; fallback to environment variables only if default local dev
+    bearer_set = bool(creds.get("x_bearer_token")) or (session_id == "default" and bool(settings.x_bearer_token))
+    user_token_set = bool(creds.get("x_user_access_token")) or (session_id == "default" and bool(settings.x_user_access_token))
+    anthropic_set = bool(creds.get("anthropic_api_key")) or (session_id == "default" and bool(settings.anthropic_api_key))
+
     return {
-        "x_bearer_token_set": bool(settings.x_bearer_token),
-        "x_user_access_token_set": bool(settings.x_user_access_token),
-        "anthropic_api_key_set": bool(settings.anthropic_api_key),
+        "x_bearer_token_set": bearer_set,
+        "x_user_access_token_set": user_token_set,
+        "anthropic_api_key_set": anthropic_set,
     }
 
 
@@ -204,7 +230,9 @@ class CampaignCreate(BaseModel):
 
 @app.post("/campaigns")
 def create_campaign(
-    body: CampaignCreate, db: Session = Depends(get_db)
+    body: CampaignCreate,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
 ):
     campaign = Campaign(
         name=body.name,
@@ -212,6 +240,7 @@ def create_campaign(
         max_sends_per_run=body.max_sends_per_run,
         max_sends_per_day=body.max_sends_per_day,
         cooldown_seconds=body.cooldown_seconds,
+        created_by=session_id,
     )
     db.add(campaign)
     db.commit()
@@ -220,8 +249,17 @@ def create_campaign(
 
 
 @app.get("/campaigns")
-def list_campaigns(db: Session = Depends(get_db)):
-    return db.query(Campaign).all()
+def list_campaigns(
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
+    # Isolated: only show campaigns created by this visitor's session
+    return (
+        db.query(Campaign)
+        .filter(Campaign.created_by == session_id)
+        .order_by(Campaign.created_at.desc())
+        .all()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -255,12 +293,20 @@ def add_seed(
 # Prospects / find
 # ---------------------------------------------------------------------------
 @app.post("/campaigns/{campaign_id}/find")
-async def find_prospects(campaign_id: int, db: Session = Depends(get_db)):
+async def find_prospects(
+    campaign_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     campaign = db.query(Campaign).get(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    x_client = XClient()
+    creds = get_session_creds(session_id)
+    x_client = XClient(
+        bearer_token=creds.get("x_bearer_token"),
+        user_access_token=creds.get("x_user_access_token"),
+    )
     seeds = db.query(SeedAccount).filter(SeedAccount.campaign_id == campaign_id).all()
     if not seeds:
         return {"created": 0, "message": "No seed accounts found. Please add seeds first."}
@@ -507,14 +553,19 @@ def update_draft(draft_id: int, body: DraftUpdate, db: Session = Depends(get_db)
 
 
 @app.post("/drafts/{draft_id}/generate")
-def generate_draft(draft_id: int, db: Session = Depends(get_db)):
+def generate_draft(
+    draft_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     draft = db.query(Draft).get(draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
     prospect = db.query(Prospect).get(draft.prospect_id)
     evidence = prospect.evidence if prospect else None
     evidence_summary = evidence.evidence_summary if evidence else ""
-    result = draft_dm(evidence_summary, prospect.display_name or prospect.username)
+    anthropic_key = get_session_creds(session_id).get("anthropic_api_key")
+    result = draft_dm(evidence_summary, prospect.display_name or prospect.username, anthropic_key=anthropic_key)
     if result.get("error"):
         raise HTTPException(status_code=500, detail=result["error"])
     draft.dm_text = result["dm_text"]
@@ -526,14 +577,19 @@ def generate_draft(draft_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/prospects/{prospect_id}/draft")
-def create_draft_for_prospect(prospect_id: int, db: Session = Depends(get_db)):
+def create_draft_for_prospect(
+    prospect_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     prospect = db.query(Prospect).get(prospect_id)
     if not prospect:
         raise HTTPException(status_code=404, detail="Prospect not found")
 
     evidence = prospect.evidence
     evidence_summary = evidence.evidence_summary if evidence else ""
-    result = draft_dm(evidence_summary, prospect.display_name or prospect.username)
+    anthropic_key = get_session_creds(session_id).get("anthropic_api_key")
+    result = draft_dm(evidence_summary, prospect.display_name or prospect.username, anthropic_key=anthropic_key)
 
     draft = db.query(Draft).filter(Draft.prospect_id == prospect.id).first()
     if draft:
@@ -555,19 +611,24 @@ def create_draft_for_prospect(prospect_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/campaigns/{campaign_id}/draft-all")
-def draft_all_for_campaign(campaign_id: int, db: Session = Depends(get_db)):
+def draft_all_for_campaign(
+    campaign_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     prospects = (
         db.query(Prospect)
         .filter(Prospect.campaign_id == campaign_id)
         .all()
     )
     count = 0
+    anthropic_key = get_session_creds(session_id).get("anthropic_api_key")
     for prospect in prospects:
         existing_draft = db.query(Draft).filter(Draft.prospect_id == prospect.id).first()
         if not existing_draft:
             evidence = prospect.evidence
             evidence_summary = evidence.evidence_summary if evidence else ""
-            result = draft_dm(evidence_summary, prospect.display_name or prospect.username)
+            result = draft_dm(evidence_summary, prospect.display_name or prospect.username, anthropic_key=anthropic_key)
             draft = Draft(
                 prospect_id=prospect.id,
                 campaign_id=campaign_id,
@@ -619,16 +680,28 @@ def reject_draft(draft_id: int, db: Session = Depends(get_db)):
 # Send
 # ---------------------------------------------------------------------------
 @app.post("/campaigns/{campaign_id}/send")
-async def send_campaign(campaign_id: int, db: Session = Depends(get_db)):
+async def send_campaign(
+    campaign_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     campaign = db.query(Campaign).get(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    x_client = XClient()
-    return await send_approved_drafts(db, x_client, campaign_id)
+    creds = get_session_creds(session_id)
+    x_client = XClient(
+        bearer_token=creds.get("x_bearer_token"),
+        user_access_token=creds.get("x_user_access_token"),
+    )
+    return await send_approved_drafts(db, x_client, campaign_id, session_id=session_id)
 
 
 @app.post("/campaigns/{campaign_id}/simulate-send")
-def simulate_send_campaign(campaign_id: int, db: Session = Depends(get_db)):
+def simulate_send_campaign(
+    campaign_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     """Mô phỏng gửi tin nhắn đã duyệt an toàn (dành cho chế độ Demo / X API Free tier)."""
     campaign = db.query(Campaign).get(campaign_id)
     if not campaign:
@@ -649,7 +722,7 @@ def simulate_send_campaign(campaign_id: int, db: Session = Depends(get_db)):
         if not prospect:
             continue
 
-        if has_already_sent(db, prospect.id, prospect.username):
+        if has_already_sent(db, prospect.id, prospect.username, session_id=session_id):
             draft.status = DraftStatus.SENT
             if not draft.sent_at:
                 draft.sent_at = datetime.utcnow()
@@ -717,11 +790,19 @@ def replies(campaign_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/campaigns/{campaign_id}/sync-replies")
-async def sync_replies(campaign_id: int, db: Session = Depends(get_db)):
+async def sync_replies(
+    campaign_id: int,
+    session_id: str = Depends(get_session_id),
+    db: Session = Depends(get_db),
+):
     campaign = db.query(Campaign).get(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    x_client = XClient()
+    creds = get_session_creds(session_id)
+    x_client = XClient(
+        bearer_token=creds.get("x_bearer_token"),
+        user_access_token=creds.get("x_user_access_token"),
+    )
     return await sync_inbound_replies(db, x_client, campaign_id)
 
 

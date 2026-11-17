@@ -6,13 +6,18 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Draft, DraftStatus, Interaction, MessageSent, MessageStatus, Prospect, ProspectStatus
+from app.models import Campaign, Draft, DraftStatus, Interaction, MessageSent, MessageStatus, Prospect, ProspectStatus
 from app.x_client import XAPIError, XClient
 
 logger = logging.getLogger("app.sender")
 
 
-def has_already_sent(db: Session, prospect_id: int, username: Optional[str] = None) -> bool:
+def has_already_sent(
+    db: Session,
+    prospect_id: int,
+    username: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> bool:
     """Kiểm tra đã từng gửi tin nhắn thành công cho prospect này hoặc username này chưa (tránh trùng lặp 100%)."""
     # 1. Check by prospect_id
     existing_id = (
@@ -24,15 +29,18 @@ def has_already_sent(db: Session, prospect_id: int, username: Optional[str] = No
     if existing_id is not None:
         return True
 
-    # 2. Check across all campaigns by username
+    # 2. Check across campaigns by username (scoped to visitor session if provided)
     if username:
-        existing_user = (
+        q = (
             db.query(MessageSent)
             .join(Prospect, MessageSent.prospect_id == Prospect.id)
+            .join(Campaign, MessageSent.campaign_id == Campaign.id)
             .filter(Prospect.username.ilike(username.strip()))
             .filter(MessageSent.status == MessageStatus.SENT)
-            .first()
         )
+        if session_id:
+            q = q.filter(Campaign.created_by == session_id)
+        existing_user = q.first()
         if existing_user is not None:
             return True
 
@@ -59,6 +67,7 @@ async def send_approved_drafts(
     x_client: XClient,
     campaign_id: int,
     max_sends: Optional[int] = None,
+    session_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Gửi các nháp đã phê duyệt, hoàn toàn tránh trùng tin nhắn, tôn trọng giới hạn và cooldown."""
     max_sends = max_sends or settings.max_sends_per_run
@@ -94,7 +103,7 @@ async def send_approved_drafts(
             continue
 
         # Dedup: never send twice to the same prospect or username
-        if has_already_sent(db, prospect.id, prospect.username):
+        if has_already_sent(db, prospect.id, prospect.username, session_id=session_id):
             draft.status = DraftStatus.SENT
             if not draft.sent_at:
                 draft.sent_at = datetime.utcnow()

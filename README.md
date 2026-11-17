@@ -108,6 +108,7 @@ Mở trình duyệt truy cập: **`http://localhost:8000`**
 ---
 
 ## 💰 Ước tính chi phí vận hành
+- **X API v2**: Mô hình Pay-Per-Use mới linh hoạt ($0.015 / DM gửi, $0.010 / user đọc). 500 lượt outreach chỉ tốn ~$22.50 X API credits, không còn phí cố định hàng tháng $200–$5,000.
 - **Claude 3.5 Sonnet**: ~\$0.003 / nháp DM. Tạo 1,000 bản nháp chỉ tốn dưới \$3.00.
-- **X API v2**: Miễn phí với chế độ tìm kiếm & soạn nháp; gói Basic \$100/tháng nếu muốn tự động hóa gửi DM API.
-- **Hosting & Database**: \$0 – \$7/tháng trên Render / Supabase / Vercel.
+- **Hosting & Database**: \$0 – \$7/tháng trên Render (Web + PostgreSQL).
+- **Tổng chi phí 1 chiến dịch tiếp cận 500 nhà sáng lập AI/Robotics**: Chỉ khoảng **$25 – $32** (chưa đến $0.06/người).
